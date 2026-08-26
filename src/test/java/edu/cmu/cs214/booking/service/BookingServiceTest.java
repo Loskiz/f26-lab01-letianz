@@ -56,6 +56,14 @@ class BookingServiceTest {
     }
 
     @Test
+    void isAvailableReturnsFalseWhenRequestedIntervalStartsDuringBooking() {
+        BookingService svc = newService();
+        svc.book(roomA, alice, new TimeInterval(600, 660));
+
+        assertFalse(svc.isAvailable(roomA, new TimeInterval(630, 690)));
+    }
+
+    @Test
     void listBookingsReturnsConfirmedBookings() {
         BookingService svc = newService();
         svc.book(roomA, alice, new TimeInterval(600, 660));

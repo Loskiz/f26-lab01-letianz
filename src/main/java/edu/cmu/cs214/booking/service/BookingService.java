@@ -77,8 +77,9 @@ public class BookingService {
      * check availability before attempting to book.
      */
     public boolean isAvailable(Room room, TimeInterval interval) {
-        for (Booking b : store.bookingsForRoom(room)) {
-            if (b.interval().start() >= interval.start() && b.interval().start() < interval.end()) {
+        for (Booking booking : store.bookingsForRoom(room)) {
+            TimeInterval existing = booking.interval();
+            if (interval.start() < existing.end() && interval.end() > existing.start()) {
                 return false;
             }
         }
