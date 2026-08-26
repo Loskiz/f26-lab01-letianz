@@ -1,33 +1,28 @@
 #!/usr/bin/env bash
-# export-transcripts.sh: copy your Claude Code transcripts into transcripts/
-# in this repository, ready to review and commit.
+# export-transcripts.sh: copy raw Codex transcripts into transcripts/ for
+# this repository.
 #
 # What it does:
-#   1. Finds the Claude Code sessions that ran inside this repository, under
-#      ~/.claude/projects/ (or $CLAUDE_CONFIG_DIR/projects if you set that).
-#   2. Copies each session file (and its subagent transcripts, if any) into
-#      transcripts/ at the repository root.
-#   3. You review the result, then commit and push it like any other file.
+#   1. Searches Codex's active and archived session directories.
+#   2. Selects sessions whose recorded working directory is this repository
+#      (or one of its subdirectories).
+#   3. Copies the complete JSONL session logs into transcripts/ unchanged.
 #
 # Usage (from anywhere inside your course repository):
 #   ./tools/export-transcripts.sh
 #
 # Notes:
-#   - Windows: run this from Git Bash or WSL.
-#   - Sessions are stored on the machine where you ran the agent. If you
-#     worked on more than one machine, run this script on each of them.
-#   - Only sessions started inside this repository are exported. Start
-#     Claude Code from the repository root and this finds everything.
-#   - If you use a different agent tool, this script does not apply: you are
-#     responsible for exporting an equivalent transcript (see policies.md).
-#   - Review the exported files for accidentally personal content before
-#     committing. The redaction rule is in policies.md.
+#   - Codex Desktop, the Codex CLI, and Codex subagents use the same session
+#     storage, so the same export covers all three.
+#   - Sessions are stored on the machine where they ran. Run this script on
+#     each machine if you used more than one.
+#   - Finish or exit relevant Codex sessions before the final export so their
+#     JSONL files are no longer being written.
+#   - Review exported files for accidentally personal content before sharing.
 #
-# INVARIANT for anyone revising this script: it exports session logs ONLY,
-# never the memory/ directory that lives alongside them (auto-memory can
-# hold personal context that has no business in a graded repo). The
-# top-level *.jsonl glob below guarantees this today; do not replace it
-# with a recursive copy.
+# INVARIANT: this script exports JSONL files only from sessions/ and
+# archived_sessions/. It must never copy Codex auth, config, state, or memory
+# data from elsewhere under CODEX_HOME.
 
 set -euo pipefail
 
@@ -36,17 +31,19 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     exit 1
 }
 
-CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-PROJECTS_DIR="$CLAUDE_DIR/projects"
-if [ ! -d "$PROJECTS_DIR" ]; then
-    echo "error: $PROJECTS_DIR not found." >&2
-    echo "Claude Code stores its sessions there. Have you run Claude Code on this machine?" >&2
+CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
+search_roots=()
+for candidate in "$CODEX_DIR/sessions" "$CODEX_DIR/archived_sessions"; do
+    if [ -d "$candidate" ]; then
+        search_roots+=("$candidate")
+    fi
+done
+
+if [ "${#search_roots[@]}" -eq 0 ]; then
+    echo "error: no Codex session directories found under $CODEX_DIR." >&2
+    echo "Start Codex inside this repository, finish a session, and try again." >&2
     exit 1
 fi
-
-# Claude Code names each folder under projects/ after the directory the
-# session started in, with every non-alphanumeric character replaced by "-".
-ENCODED="$(printf '%s\n' "$REPO_ROOT" | sed 's/[^A-Za-z0-9]/-/g')"
 
 DEST="$REPO_ROOT/transcripts"
 mkdir -p "$DEST"
@@ -54,55 +51,40 @@ mkdir -p "$DEST"
 copied=0
 skipped=0
 
-# copy_session <session-jsonl>: copies the session file plus its companion
-# directory (subagent transcripts), preserving names.
-copy_session() {
-    f="$1"
-    cp -p "$f" "$DEST/"
-    companion="${f%.jsonl}"
-    if [ -d "$companion" ]; then
-        # Replace any previous export of this session's directory, otherwise
-        # cp would nest the new copy inside the old one on a re-run.
-        companion_dest="$DEST/$(basename "$companion")"
-        rm -rf "$companion_dest"
-        cp -Rp "$companion" "$companion_dest"
+while IFS= read -r -d '' session_file; do
+    # The structured session metadata records cwd as compact JSON. Matching the
+    # exact root and root/ forms avoids including a sibling such as repo-extra.
+    if grep -q -m 1 -F \
+        -e "\"cwd\":\"$REPO_ROOT\"" \
+        -e "\"cwd\":\"$REPO_ROOT/" \
+        "$session_file"; then
+        cp -p "$session_file" "$DEST/$(basename "$session_file")"
+        copied=$((copied + 1))
+    else
+        skipped=$((skipped + 1))
     fi
-    copied=$((copied + 1))
-}
-
-for dir in "$PROJECTS_DIR/$ENCODED" "$PROJECTS_DIR/$ENCODED"-*; do
-    [ -d "$dir" ] || continue
-    for f in "$dir"/*.jsonl; do
-        [ -f "$f" ] || continue
-        if [ "$dir" = "$PROJECTS_DIR/$ENCODED" ]; then
-            # Folder name matches the repository root exactly: always ours.
-            copy_session "$f"
-        elif grep -q -m 1 -F -e "\"cwd\":\"$REPO_ROOT\"" -e "\"cwd\":\"$REPO_ROOT/" "$f"; then
-            # Folder name only starts with our name (a session started in a
-            # subdirectory), which can collide with a sibling directory like
-            # repo-extra/. The recorded working directory settles it.
-            copy_session "$f"
-        else
-            skipped=$((skipped + 1))
-        fi
-    done
-done
+done < <(find "${search_roots[@]}" -type f -name '*.jsonl' -print0)
 
 if [ "$copied" -eq 0 ]; then
-    echo "No Claude Code sessions found for $REPO_ROOT."
-    echo "Sessions are recorded per starting directory: start Claude Code inside the repository and try again."
+    echo "No Codex sessions found for $REPO_ROOT." >&2
+    echo "Start Codex with this repository as its working directory and try again." >&2
     if [ "$skipped" -gt 0 ]; then
-        echo "(Skipped $skipped session file(s) that ran in other directories.)"
+        echo "(Skipped $skipped session file(s) from other working directories.)" >&2
     fi
     exit 1
 fi
 
 echo "Exported $copied session(s) to transcripts/ ($(du -sh "$DEST" | cut -f1) total)."
 if [ "$skipped" -gt 0 ]; then
-    echo "Skipped $skipped session file(s) that ran in other directories."
+    echo "Skipped $skipped session file(s) from other working directories."
 fi
+
 echo
 echo "Next steps:"
-echo "  1. Skim the exported files for anything accidentally personal (see policies.md)."
-echo "  2. git add transcripts && git commit -m \"Add agent transcripts\""
-echo "  3. git push"
+echo "  1. Skim the exported files for accidentally personal content."
+if git check-ignore -q "$DEST"; then
+    echo "  2. transcripts/ is ignored in this public repository; keep it local."
+    echo "  3. Do not commit or push these transcripts. Show them to the TA locally."
+else
+    echo "  2. Follow the assignment handout's transcript submission instructions."
+fi
