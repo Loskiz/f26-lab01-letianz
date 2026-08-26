@@ -88,4 +88,46 @@ class BookingServiceTest {
         assertEquals(List.of(confirmed.booking()), store.bookingsForRoom(roomA));
         assertEquals(waitlistBefore, store.waitlistForRoom(roomA));
     }
+
+    @Test
+    void cancelBookingPromotesEligibleWaiter() {
+        InMemoryBookingStore store = new InMemoryBookingStore();
+        BookingService svc = new BookingService(store);
+        TimeInterval requested = new TimeInterval(630, 700);
+        BookingResult.Confirmed confirmed = assertInstanceOf(
+            BookingResult.Confirmed.class,
+            svc.book(roomA, alice, new TimeInterval(600, 660)));
+        assertInstanceOf(BookingResult.Waitlisted.class, svc.book(roomA, bob, requested));
+
+        svc.cancelBooking(confirmed.booking().id());
+
+        assertEquals(1, store.bookingsForRoom(roomA).size());
+        var promoted = store.bookingsForRoom(roomA).getFirst();
+        assertEquals(roomA, promoted.room());
+        assertEquals(bob, promoted.user());
+        assertEquals(requested, promoted.interval());
+        assertEquals(List.of(), store.waitlistForRoom(roomA));
+    }
+
+    @Test
+    void cancelBookingLeavesConflictingWaiterWaiting() {
+        InMemoryBookingStore store = new InMemoryBookingStore();
+        BookingService svc = new BookingService(store);
+        User charlie = new User("u3", "Charlie");
+        BookingResult.Confirmed cancelled = assertInstanceOf(
+            BookingResult.Confirmed.class,
+            svc.book(roomA, alice, new TimeInterval(600, 660)));
+        BookingResult.Confirmed blocker = assertInstanceOf(
+            BookingResult.Confirmed.class,
+            svc.book(roomA, charlie, new TimeInterval(660, 720)));
+        assertInstanceOf(
+            BookingResult.Waitlisted.class,
+            svc.book(roomA, bob, new TimeInterval(630, 690)));
+        var waitlistBefore = store.waitlistForRoom(roomA);
+
+        svc.cancelBooking(cancelled.booking().id());
+
+        assertEquals(List.of(blocker.booking()), store.bookingsForRoom(roomA));
+        assertEquals(waitlistBefore, store.waitlistForRoom(roomA));
+    }
 }

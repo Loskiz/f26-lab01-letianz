@@ -42,12 +42,33 @@ public class BookingService {
         return new BookingResult.Confirmed(booking);
     }
 
-    /** Cancels the confirmed booking with {@code bookingId}, if it exists. */
+    /**
+     * Cancels the confirmed booking with {@code bookingId}, if it exists, and
+     * promotes the first waiter when their requested interval is free.
+     */
     public void cancelBooking(String bookingId) {
-        if (store.findBooking(bookingId).isEmpty()) {
+        Booking cancelled = store.findBooking(bookingId).orElse(null);
+        if (cancelled == null) {
             return;
         }
         store.removeBooking(bookingId);
+
+        List<WaitlistEntry> waiters = store.waitlistForRoom(cancelled.room());
+        if (waiters.isEmpty()) {
+            return;
+        }
+
+        WaitlistEntry waiter = waiters.getFirst();
+        boolean overlaps = store.bookingsForRoom(cancelled.room()).stream()
+            .anyMatch(booking -> booking.interval().overlaps(waiter.interval()));
+        if (overlaps) {
+            return;
+        }
+
+        Booking promoted = new Booking(
+            "b" + nextBookingSeq++, waiter.room(), waiter.user(), waiter.interval());
+        store.addBooking(promoted);
+        store.removeWaitlistEntry(waiter.id());
     }
 
     /** Returns the confirmed bookings for {@code room}. */
