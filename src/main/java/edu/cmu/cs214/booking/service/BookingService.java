@@ -75,10 +75,20 @@ public class BookingService {
     /**
      * Reports whether {@code room} is free over {@code interval}, so callers can
      * check availability before attempting to book.
+     *
+     * <p>The original check was:
+     * {@code existing.start() >= interval.start()
+     *     && existing.start() < interval.end()}.
+     * It only detected an existing booking whose start fell inside the requested
+     * interval, so it missed a request that started during an existing booking.
+     * Two half-open intervals overlap when each starts before the other ends;
+     * the check below applies both sides of that rule.
      */
     public boolean isAvailable(Room room, TimeInterval interval) {
         for (Booking booking : store.bookingsForRoom(room)) {
             TimeInterval existing = booking.interval();
+            // Fixed overlap rule: requested.start < existing.end and
+            // requested.end > existing.start.
             if (interval.start() < existing.end() && interval.end() > existing.start()) {
                 return false;
             }

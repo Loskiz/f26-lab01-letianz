@@ -60,6 +60,8 @@ class BookingServiceTest {
         BookingService svc = newService();
         svc.book(roomA, alice, new TimeInterval(600, 660));
 
+        // Regression: the original one-sided check missed this overlap because
+        // the existing booking starts before the requested interval.
         assertFalse(svc.isAvailable(roomA, new TimeInterval(630, 690)));
     }
 
