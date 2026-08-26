@@ -23,10 +23,23 @@ public class InMemoryBookingStore implements BookingStore {
         return bookings.stream().filter(b -> b.id().equals(bookingId)).findFirst();
     }
 
+    /*
+     * Original buggy implementation retained for root-cause documentation:
+     *
+     * @Override
+     * public List<Booking> bookingsForRoom(Room room) {
+     *     // The bookings held for a single room.
+     *     return List.copyOf(bookings);
+     * }
+     *
+     * It ignored the room argument and exposed bookings belonging to every room. 
+     * Rather than filtering for `room` as intended
+     */
     @Override
     public List<Booking> bookingsForRoom(Room room) {
-        // The bookings held for a single room.
-        return List.copyOf(bookings);
+        return bookings.stream()
+            .filter(booking -> booking.room().id().equals(room.id()))
+            .toList();
     }
 
     @Override
