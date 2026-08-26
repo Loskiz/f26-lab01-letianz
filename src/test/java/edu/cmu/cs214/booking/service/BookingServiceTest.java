@@ -3,9 +3,11 @@ package edu.cmu.cs214.booking.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
+import edu.cmu.cs214.booking.domain.Booking;
 import edu.cmu.cs214.booking.domain.Room;
 import edu.cmu.cs214.booking.domain.TimeInterval;
 import edu.cmu.cs214.booking.domain.User;
+import edu.cmu.cs214.booking.domain.WaitlistEntry;
 import edu.cmu.cs214.booking.repo.InMemoryBookingStore;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -129,5 +131,29 @@ class BookingServiceTest {
 
         assertEquals(List.of(blocker.booking()), store.bookingsForRoom(roomA));
         assertEquals(waitlistBefore, store.waitlistForRoom(roomA));
+    }
+
+    @Test
+    void cancelBookingPromotesLowestSequenceWaiterOnly() {
+        InMemoryBookingStore store = new InMemoryBookingStore();
+        BookingService svc = new BookingService(store);
+        User charlie = new User("u3", "Charlie");
+        Booking cancelled = new Booking(
+            "existing", roomA, alice, new TimeInterval(600, 660));
+        WaitlistEntry later = new WaitlistEntry(
+            "w2", roomA, charlie, new TimeInterval(620, 630), 2);
+        WaitlistEntry earlier = new WaitlistEntry(
+            "w1", roomA, bob, new TimeInterval(610, 620), 1);
+        store.addBooking(cancelled);
+        store.addWaitlistEntry(later);
+        store.addWaitlistEntry(earlier);
+
+        svc.cancelBooking(cancelled.id());
+
+        assertEquals(1, store.bookingsForRoom(roomA).size());
+        var promoted = store.bookingsForRoom(roomA).getFirst();
+        assertEquals(earlier.user(), promoted.user());
+        assertEquals(earlier.interval(), promoted.interval());
+        assertEquals(List.of(later), store.waitlistForRoom(roomA));
     }
 }
