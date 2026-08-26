@@ -63,6 +63,7 @@ class BookingServiceTest {
         assertEquals(2, svc.listBookings(roomA).size());
     }
 
+    // Proves cancellation removes the matching confirmed booking from the store.
     @Test
     void cancelBookingRemovesExistingBooking() {
         InMemoryBookingStore store = new InMemoryBookingStore();
@@ -76,6 +77,7 @@ class BookingServiceTest {
         assertEquals(List.of(), store.bookingsForRoom(roomA));
     }
 
+    // Guards the no-op contract, including unchanged confirmed and waitlist state.
     @Test
     void cancelBookingWithUnknownIdDoesNothing() {
         InMemoryBookingStore store = new InMemoryBookingStore();
@@ -92,6 +94,7 @@ class BookingServiceTest {
         assertEquals(waitlistBefore, store.waitlistForRoom(roomA));
     }
 
+    // Proves an eligible waiter is confirmed with the same request and dequeued.
     @Test
     void cancelBookingPromotesEligibleWaiter() {
         InMemoryBookingStore store = new InMemoryBookingStore();
@@ -112,6 +115,7 @@ class BookingServiceTest {
         assertEquals(List.of(), store.waitlistForRoom(roomA));
     }
 
+    // Protects the no-overlap invariant when another booking still blocks the waiter.
     @Test
     void cancelBookingLeavesConflictingWaiterWaiting() {
         InMemoryBookingStore store = new InMemoryBookingStore();
@@ -134,6 +138,7 @@ class BookingServiceTest {
         assertEquals(waitlistBefore, store.waitlistForRoom(roomA));
     }
 
+    // Verifies seq, not storage order, determines the single promoted waiter.
     @Test
     void cancelBookingPromotesLowestSequenceWaiterOnly() {
         InMemoryBookingStore store = new InMemoryBookingStore();
@@ -158,6 +163,7 @@ class BookingServiceTest {
         assertEquals(List.of(later), store.waitlistForRoom(roomA));
     }
 
+    // Verifies a blocked earlier waiter is skipped for the next eligible waiter.
     @Test
     void cancelBookingSkipsBlockedWaiterAndPromotesNextEligibleWaiter() {
         InMemoryBookingStore store = new InMemoryBookingStore();
