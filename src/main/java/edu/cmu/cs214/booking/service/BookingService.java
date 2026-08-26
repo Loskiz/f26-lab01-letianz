@@ -42,6 +42,14 @@ public class BookingService {
         return new BookingResult.Confirmed(booking);
     }
 
+    /** Cancels the confirmed booking with {@code bookingId}, if it exists. */
+    public void cancelBooking(String bookingId) {
+        if (store.findBooking(bookingId).isEmpty()) {
+            return;
+        }
+        store.removeBooking(bookingId);
+    }
+
     /** Returns the confirmed bookings for {@code room}. */
     public List<Booking> listBookings(Room room) {
         return store.bookingsForRoom(room);
