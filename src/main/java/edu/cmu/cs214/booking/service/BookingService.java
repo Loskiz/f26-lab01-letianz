@@ -45,7 +45,7 @@ public class BookingService {
 
     /**
      * Cancels the confirmed booking with {@code bookingId}, if it exists, and
-     * promotes the first waiter when their requested interval is free.
+     * promotes the earliest waiter whose requested interval is free.
      */
     public void cancelBooking(String bookingId) {
         Booking cancelled = store.findBooking(bookingId).orElse(null);
@@ -57,21 +57,19 @@ public class BookingService {
         List<WaitlistEntry> waiters = store.waitlistForRoom(cancelled.room()).stream()
             .sorted(Comparator.comparingInt(WaitlistEntry::seq))
             .toList();
-        if (waiters.isEmpty()) {
+        for (WaitlistEntry waiter : waiters) {
+            boolean overlaps = store.bookingsForRoom(cancelled.room()).stream()
+                .anyMatch(booking -> booking.interval().overlaps(waiter.interval()));
+            if (overlaps) {
+                continue;
+            }
+
+            Booking promoted = new Booking(
+                "b" + nextBookingSeq++, waiter.room(), waiter.user(), waiter.interval());
+            store.addBooking(promoted);
+            store.removeWaitlistEntry(waiter.id());
             return;
         }
-
-        WaitlistEntry waiter = waiters.getFirst();
-        boolean overlaps = store.bookingsForRoom(cancelled.room()).stream()
-            .anyMatch(booking -> booking.interval().overlaps(waiter.interval()));
-        if (overlaps) {
-            return;
-        }
-
-        Booking promoted = new Booking(
-            "b" + nextBookingSeq++, waiter.room(), waiter.user(), waiter.interval());
-        store.addBooking(promoted);
-        store.removeWaitlistEntry(waiter.id());
     }
 
     /** Returns the confirmed bookings for {@code room}. */

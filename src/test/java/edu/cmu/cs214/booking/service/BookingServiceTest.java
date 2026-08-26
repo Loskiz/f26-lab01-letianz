@@ -1,6 +1,7 @@
 package edu.cmu.cs214.booking.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import edu.cmu.cs214.booking.domain.Booking;
@@ -155,5 +156,37 @@ class BookingServiceTest {
         assertEquals(earlier.user(), promoted.user());
         assertEquals(earlier.interval(), promoted.interval());
         assertEquals(List.of(later), store.waitlistForRoom(roomA));
+    }
+
+    @Test
+    void cancelBookingSkipsBlockedWaiterAndPromotesNextEligibleWaiter() {
+        InMemoryBookingStore store = new InMemoryBookingStore();
+        BookingService svc = new BookingService(store);
+        User charlie = new User("u3", "Charlie");
+        User dana = new User("u4", "Dana");
+        TimeInterval laterInterval = new TimeInterval(620, 680);
+        BookingResult.Confirmed cancelled = assertInstanceOf(
+            BookingResult.Confirmed.class,
+            svc.book(roomA, alice, new TimeInterval(600, 660)));
+        BookingResult.Confirmed blocker = assertInstanceOf(
+            BookingResult.Confirmed.class,
+            svc.book(roomA, charlie, new TimeInterval(680, 740)));
+        assertInstanceOf(
+            BookingResult.Waitlisted.class,
+            svc.book(roomA, bob, new TimeInterval(630, 700)));
+        assertInstanceOf(
+            BookingResult.Waitlisted.class,
+            svc.book(roomA, dana, laterInterval));
+        WaitlistEntry earlier = store.waitlistForRoom(roomA).getFirst();
+
+        svc.cancelBooking(cancelled.booking().id());
+
+        assertEquals(2, store.bookingsForRoom(roomA).size());
+        assertEquals(blocker.booking(), store.bookingsForRoom(roomA).getFirst());
+        Booking promoted = store.bookingsForRoom(roomA).get(1);
+        assertEquals(dana, promoted.user());
+        assertEquals(laterInterval, promoted.interval());
+        assertFalse(blocker.booking().interval().overlaps(promoted.interval()));
+        assertEquals(List.of(earlier), store.waitlistForRoom(roomA));
     }
 }
